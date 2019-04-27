@@ -1,23 +1,51 @@
 import os, sys, matplotlib
+import warnings
 
-# add manga RC location to path, and import config
-if os.environ['MANGA_CONFIG_LOC'] not in sys.path:
-    sys.path.append(os.environ['MANGA_CONFIG_LOC'])
+#####
+# add path to MaNGA tools
+#####
 
-import mangarc
+tools_loc = '/usr/users/zpace/Documents/python-personal/'
 
-if mangarc.tools_loc not in sys.path:
-    sys.path.append(mangarc.tools_loc)
+if tools_loc not in sys.path:
+    sys.path.append(tools_loc)
 
-mpl_v = 'MPL-8'
-daptype = 'SPX-MILESHC-MILESHC'
-
-pca_basedir = '/usr/data/minhas2/zpace/CSPs/CSPs_CKC14_MaNGA_20190215-1/'
-pca_software_dir = '/usr/data/minhas/zpace/stellarmass_pca/'
-sys.path.append(pca_software_dir)
+#####
+# astropy cosmology science state
+#####
 
 from astropy.cosmology import WMAP9
 cosmo = WMAP9
 
 matplotlib.rcParams['font.family'] = 'serif'
 matplotlib.rcParams['text.usetex'] = True
+
+#####
+# marvin configuration
+#####
+
+MPL_V = 'MPL-8'
+DAPBINTYPE = 'SPX'
+DAPTEMPLATETYPE = 'MILESHC-MILESHC'
+DAPTYPE = '-'.join((DAPBINTYPE, DAPTEMPLATETYPE))
+SAS_BASEDIR = os.environ['SAS_BASE_DIR']
+
+with warnings.catch_warnings():
+    warnings.simplefilter('ignore')
+    
+    from marvin import config as marvin_cfg
+    
+    marvin_cfg.release = MPL_V
+    marvin_cfg.download = True
+    marvin_cfg.access = 'collab'
+    MANGADRPVER, MANGADAPVER = marvin_cfg.lookUpVersions()
+
+    print('----Marvin Configuration-----')
+    print(''.join(('\t', 'Release: {}'.format(marvin_cfg.release))))
+    print(''.join(('\t', '\t', 'DRP: {}'.format(MANGADRPVER))))
+    print(''.join(('\t', '\t', 'DAP: {}'.format(MANGADAPVER))))
+    print(''.join(('\t', '\t', '\t', 'Bin Type: {}'.format(DAPBINTYPE))))
+    print(''.join(('\t', '\t', '\t', 'Template Type: {}'.format(DAPTEMPLATETYPE))))
+    print(''.join(('\t', 'Local SAS: {}'.format(SAS_BASEDIR))))
+    print(''.join(('\t', 'Download: {}'.format(marvin_cfg.download))))
+    print(''.join(('\t', 'Access: {}'.format(marvin_cfg.access))))
