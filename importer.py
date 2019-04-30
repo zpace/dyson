@@ -2,15 +2,6 @@ import os, sys, matplotlib
 import warnings
 
 #####
-# add path to MaNGA tools
-#####
-
-tools_loc = '/usr/users/zpace/Documents/python-personal/'
-
-if tools_loc not in sys.path:
-    sys.path.append(tools_loc)
-
-#####
 # astropy cosmology science state
 #####
 

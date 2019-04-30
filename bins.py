@@ -38,15 +38,25 @@ class BinDef(object):
         >>> bin(a)
         '''
         self.name = name
-        self.binbounds = binbounds
-        self.binbounds_ext = np.concatenate([[-np.inf], self.binbounds, [np.inf]])
-        self.nbins = len(self.binbounds) + 1
+        self.binbounds = np.asarray(binbounds)
+        self.nbins = len(self.binbounds) - 1
         self.index = index
 
         if fn is None:
             self.fn = lambda x, *args, **kwargs: x
+        else:
+            self.fn = fn
 
         self.fn_args, self.fn_kwargs = args, kwargs
+
+    def do_bin(self, tfm_vals):
+        '''simply applies bin function
+        '''
+        assignment = np.digitize(tfm_vals, bins=self.binbounds)
+        masked_assignment = np.ma.masked_outside(
+            assignment, 1, len(self.binbounds) - 1)
+
+        return masked_assignment
 
     def __call__(self, vals):
         '''applies transformation to passed values, then bins result
@@ -65,7 +75,8 @@ class BinDef(object):
         array-like
             array of bin assignments
         '''
-        return np.digitize(self.fn(vals, *self.fn_args, **self.fn_kwargs), bins=self.binbounds)
+        assignment = self.do_bin(self.fn(vals, *self.fn_args, **self.fn_kwargs))
+        return assignment
 
     @property
     def table(self):
@@ -77,7 +88,7 @@ class BinDef(object):
             table of bin boundaries
         '''
         index_col_name = '{}_index'.format(self.name)
-        tab = t.Table(data=[self.binbounds_ext[:-1], self.binbounds_ext[1:], range(self.nbins)],
+        tab = t.Table(data=[self.binbounds[:-1], self.binbounds[1:], range(self.nbins)],
                       names=['{}_low'.format(self.name), '{}_high'.format(self.name), 
                              index_col_name])
         tab.add_index(index_col_name)
@@ -92,12 +103,39 @@ class TableBinDef(BinDef):
     def __call__(self, ix):
         return np.digitize(self.fn(self.mapping[ix], *self.fn_args, **self.fn_kwargs), bins=self.binbounds)
 
-class BPTBinDef(BinDef):
+class BPTBinMarvin(BinDef):
     '''
     defines a bin based on ionization diagnostic
     '''
-    def __init__(self, dap_maps, *args, **kwargs):
-       super().__init__(*args, **kwargs)
+    def __init__(self, name, index, *args, categories=['sf', 'comp', 'seyfert', 'liner'],
+                 **kwargs):
+
+        self.categories = categories
+        binbounds = np.array(list(range(len(categories) + 1))) - 0.5
+
+        super().__init__(name, binbounds, index, *args, fn=self.bpt, **kwargs)
+
+    def bpt(self, marvin_dap_maps):
+        '''function that classifies spaxels
+
+        Parameters
+        ----------
+        marvin_dap_maps : marvin.tools.maps.Maps
+            `marvin` `Maps` object
+        '''
+        bptmap = marvin_dap_maps.get_bpt(use_oi=False, return_figure=False, show_plot=False)
+
+        bptclasses = [bptmap[c]['global'] for c in self.categories]
+        # 'other' denotes where no other mask is set
+        other = np.ones_like(bptclasses[0])
+        bptclasses.append(other)
+        # if any BPT category is set to TRUE, OTHER is ignored
+        # b/c numpy chooses first instance of max value
+        all_bptclasses = np.stack(bptclasses, axis=0)
+
+        assigned_bptclass = np.argmax(all_bptclasses, axis=0)
+
+        return assigned_bptclass
 
 class Binner(object):
     '''
@@ -112,7 +150,7 @@ class Binner(object):
         '''
         construct from alternating names and bin-bounds arguments
         '''
-        allnames, albounds = args[::2], args[1::2]
+        allnames, allbounds = args[::2], args[1::2]
         allbindefs = list(map(BinDef, allnames, allbounds, range(len(allnames))))
         return cls(allbindefs)
 
@@ -120,8 +158,24 @@ class Binner(object):
         if len(vals) != len(self.bindefs):
             raise ValueError(
                 'shape mismatch: axis 0 of vals should have size equal to number of bin axes')
-        return tuple(bindef(vals[bindef.index]) for bindef in self.bindefs)
+        return tuple(bindef(val) for bindef, val in zip(self.bindefs, vals))
 
     @property
     def table(self):
-        tabs = {bindef.name: bindef.table for bindef in self.bindefs}
+        bin_llims = np.meshgrid(*[bd.binbounds[:-1] for bd in self.bindefs], indexing='ij')
+        bin_ulims = np.meshgrid(*[bd.binbounds[1:] for bd in self.bindefs], indexing='ij')
+        bin_ix = np.meshgrid(*list(range(s) for s in self.shape))
+
+        tab = t.Table(data=[range(np.prod(self.shape))], names=['num'])
+        llims_names = ['{}_llim'.format(bd.name) for bd in self.bindefs]
+        ulims_names = ['{}_ulim'.format(bd.name) for bd in self.bindefs]
+        ix_names = ['{}_ix'.format(bd.name) for bd in self.bindefs]
+
+        for ll, lln, ul, uln, ix, ixn in zip(
+            bin_llims, llims_names, bin_ulims, ulims_names, bin_ix, ix_names):
+
+            tab[lln] = ll.flatten()
+            tab[uln] = ul.flatten()
+            tab[ixn] = ix.flatten()
+
+        return tab
