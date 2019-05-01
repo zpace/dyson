@@ -28,4 +28,4 @@ bin_Rreff = bins.BinDef('Rreff', np.array([0., 0.25, 0.5, 0.75, 1., 1.5, 2., 2.5
 
 binner = bins.Binner([bin_BPT, bin_ewHa, bin_OiiiOii, bin_Rreff])
 
-bin_assignments = binner([dap_maps, dap_maps, dap_maps, dap_maps])
+plateifu_list = []
