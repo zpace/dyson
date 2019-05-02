@@ -1,7 +1,14 @@
 import numpy as np
 from astropy import table as t
 
+from astropy.io import fits
+from astropy.utils.decorators import lazyproperty
+
+import os
+
 import utils as ut
+
+from stax import BinStack
 
 class BinDef(object):    
     def __init__(self, name, binbounds, index, *args, 
@@ -144,6 +151,7 @@ class Binner(object):
     def __init__(self, bindefs, *args, **kwargs):
         self.bindefs = bindefs
         self.shape = tuple(d.nbins for d in self.bindefs)
+        
 
     @classmethod
     def from_namesbounds(cls, *args):
@@ -160,7 +168,7 @@ class Binner(object):
                 'shape mismatch: axis 0 of vals should have size equal to number of bin axes')
         return tuple(bindef(val) for bindef, val in zip(self.bindefs, vals))
 
-    @property
+    @lazyproperty
     def table(self):
         bin_llims = np.meshgrid(*[bd.binbounds[:-1] for bd in self.bindefs], indexing='ij')
         bin_ulims = np.meshgrid(*[bd.binbounds[1:] for bd in self.bindefs], indexing='ij')
@@ -178,4 +186,44 @@ class Binner(object):
             tab[uln] = ul.flatten()
             tab[ixn] = ix.flatten()
 
+        tab.add_index('num')
+
         return tab
+
+    def binnum_to_binixs(self, num):
+        return np.unravel_index(num, self.shape)
+
+    def define_binstacks(self, lamgrid):
+        self.bin_stacks = [BinStack(
+                               lamgrid, bin_ix=np.array(self.binnum_to_binixs(binnum)),
+                               binnum=binnum)
+                           for binnum in self.table['num']]
+
+
+def write_bin_assign(bin_assignment, plateifu, loc='.'):
+    '''write bin assignment to FITS
+
+    Parameters
+    ----------
+    bin_assignment : tuple of np.ma.array
+        tuple of numpy mask arrays, giving bin assignment along each bin axis
+
+    plateifu : str
+        plateifu designation
+
+    loc : str
+        where output file gets placed
+    '''
+
+    hdulist = fits.HDUList(fits.PrimaryHDU())
+    bin_a = np.ma.stack(bin_assignment, axis=0)
+    
+    bin_assign_hdu = fits.ImageHDU(bin_a.data)
+    bin_assign_hdu.header['EXTNAME'] = 'ASSIGN'
+    hdulist.append(bin_assign_hdu)
+
+    mask_hdu = fits.ImageHDU(bin_a.mask.any(axis=0).astype(float))
+    mask_hdu.header['EXTNAME'] = 'MASK'
+    hdulist.append(mask_hdu)
+
+    hdulist.writeto(os.path.join(loc, '{}_BINASSIGN.fits'.format(plateifu)), overwrite=True)

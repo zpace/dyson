@@ -21,6 +21,8 @@ DAPTEMPLATETYPE = 'MILESHC-MILESHC'
 DAPTYPE = '-'.join((DAPBINTYPE, DAPTEMPLATETYPE))
 SAS_BASEDIR = os.environ['SAS_BASE_DIR']
 
+STACKING_BASEDIR = '/usr/data/minhas2/zpace/stacking'
+
 with warnings.catch_warnings():
     warnings.simplefilter('ignore')
     
